@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../hooks/useAuth";
 import API from "../api/axios";
 
@@ -40,6 +40,9 @@ export default function Dashboard() {
   const [selectedRfqQuotes, setSelectedRfqQuotes] = useState(null);
   const [quotesList, setQuotesList] = useState([]);
   const [loadingQuotes, setLoadingQuotes] = useState(false);
+
+  // Ref for auto-scrolling to bids section
+  const bidsSectionRef = useRef(null);
 
   // Load user-specific quotes from localStorage when user changes
   useEffect(() => {
@@ -116,9 +119,6 @@ export default function Dashboard() {
 
   // Handle Logout cleanly
   const handleLogout = () => {
-    if (user && user.email) {
-      // Optional: clear or keep user specific cache, but ensure switching accounts doesn't leak old data
-    }
     logout();
   };
 
@@ -249,6 +249,13 @@ export default function Dashboard() {
     try {
       const res = await API.get(`/quotes/rfq/${rfqId}`);
       setQuotesList(res.data.data || res.data || []);
+      
+      // Auto scroll to bids section smoothly
+      setTimeout(() => {
+        if (bidsSectionRef.current) {
+          bidsSectionRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 100);
     } catch (err) {
       console.error("Error fetching quotes:", err);
       setQuotesList([]);
@@ -515,7 +522,7 @@ export default function Dashboard() {
           )}
 
           {selectedRfqQuotes && (
-            <div className="card" style={{ marginTop: "32px", borderLeft: "4px solid var(--primary)" }}>
+            <div ref={bidsSectionRef} className="card" style={{ marginTop: "32px", borderLeft: "4px solid var(--primary)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
                 <h3 style={{ fontSize: "1.15rem", fontWeight: "700" }}>Supplier Bids Received</h3>
                 <button onClick={() => setSelectedRfqQuotes(null)} className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: "0.8rem" }}>Close</button>
