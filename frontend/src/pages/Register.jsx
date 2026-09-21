@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../hooks/useAuth";
 import { useNavigate, Link } from "react-router-dom";
+import API from "../api/axios";
 
 export default function Register() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("BUYER");
+  const [role, setRole] = useState("buyer"); // buyer or supplier
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { register } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -18,10 +19,12 @@ export default function Register() {
     setLoading(true);
 
     try {
-      await register(name, email, password, role);
+      const res = await API.post("/auth/register", { name, email, password, role });
+      const { user, token } = res.data;
+
+      login(user, token);
       navigate("/dashboard");
     } catch (err) {
-      // Show exact message from backend response if available
       const apiMessage = err.response?.data?.message || err.message;
       setError(apiMessage || "Registration failed. Please try again.");
     } finally {
@@ -30,11 +33,11 @@ export default function Register() {
   };
 
   return (
-    <div className="container" style={{ maxWidth: "460px", marginTop: "40px" }}>
+    <div className="container" style={{ maxWidth: "420px", marginTop: "60px" }}>
       <div className="card">
         <h2 style={{ fontSize: "1.5rem", fontWeight: "700", marginBottom: "8px" }}>Create Account</h2>
-        <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", marginBottom: "20px" }}>
-          Join as a Buyer to post RFQs or a Supplier to submit quotes.
+        <p style={{ color: "var(--text-muted, #64748b)", fontSize: "0.9rem", marginBottom: "20px" }}>
+          Join the B2B RFQ Marketplace workspace.
         </p>
 
         {error && (
@@ -43,69 +46,75 @@ export default function Register() {
           </div>
         )}
 
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label htmlFor="reg-name">Full Name or Company</label>
+        <form onSubmit={handleSubmit} autoComplete="off">
+          <div className="form-group" style={{ marginBottom: "16px" }}>
+            <label style={{ display: "block", fontWeight: "600", marginBottom: "6px" }}>Full Name</label>
             <input
-              id="reg-name"
-              name="name"
               type="text"
               required
-              autoComplete="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Acme Corp / John Doe"
+              placeholder="John Doe"
+              style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
             />
           </div>
 
-          <div className="form-group">
-            <label htmlFor="reg-email">Business Email</label>
+          <div className="form-group" style={{ marginBottom: "16px" }}>
+            <label style={{ display: "block", fontWeight: "600", marginBottom: "6px" }}>Email Address</label>
             <input
-              id="reg-email"
-              name="email"
               type="email"
               required
-              autoComplete="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="name@company.com"
+              style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
             />
           </div>
 
-          <div className="form-group">
-            <label htmlFor="reg-password">Password</label>
+          <div className="form-group" style={{ marginBottom: "16px" }}>
+            <label style={{ display: "block", fontWeight: "600", marginBottom: "6px" }}>Password</label>
             <input
-              id="reg-password"
-              name="password"
               type="password"
               required
-              autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 6 characters"
+              placeholder="••••••••"
+              style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
             />
           </div>
 
-          <div className="form-group">
-            <label htmlFor="reg-role">Select Account Role</label>
+          <div className="form-group" style={{ marginBottom: "20px" }}>
+            <label style={{ display: "block", fontWeight: "600", marginBottom: "6px" }}>I am a</label>
             <select
-              id="reg-role"
-              name="role"
               value={role}
               onChange={(e) => setRole(e.target.value)}
+              style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff" }}
             >
-              <option value="BUYER">Buyer (Post RFQs & Receive Bids)</option>
-              <option value="SUPPLIER">Supplier (Browse RFQs & Submit Bids)</option>
+              <option value="buyer">Buyer</option>
+              <option value="supplier">Supplier</option>
             </select>
           </div>
 
-          <button type="submit" className="btn btn-primary" style={{ width: "100%", marginTop: "8px" }} disabled={loading}>
-            {loading ? "Creating Account..." : "Complete Registration"}
+          <button 
+            type="submit" 
+            disabled={loading}
+            style={{ 
+              width: "100%", 
+              padding: "12px", 
+              backgroundColor: "var(--primary, #2563eb)", 
+              color: "#fff", 
+              border: "none", 
+              borderRadius: "6px", 
+              fontWeight: "600", 
+              cursor: "pointer" 
+            }}
+          >
+            {loading ? "Creating Account..." : "Sign Up"}
           </button>
         </form>
 
-        <p style={{ marginTop: "20px", fontSize: "0.875rem", color: "var(--text-muted)", textAlign: "center" }}>
-          Already have an account? <Link to="/login" style={{ color: "var(--primary)", fontWeight: "600" }}>Sign in</Link>
+        <p style={{ marginTop: "20px", fontSize: "0.875rem", color: "#64748b", textAlign: "center" }}>
+          Already have an account? <Link to="/login" style={{ color: "#2563eb", fontWeight: "600" }}>Sign in</Link>
         </p>
       </div>
     </div>
