@@ -1,12 +1,15 @@
 import express from "express";
-import { createRFQ, getRFQs } from "../controllers/rfqController.js";
-import { authenticateToken, authorizeRoles } from "../middleware/authMiddleware.js";
+import { getRFQs, createRFQ, updateRFQ, deleteRFQ } from "../controllers/rfqController.js";
+import { verifyToken, isBuyer } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.use(authenticateToken); // Protect all RFQ routes
+// Public / Authenticated search & browse
+router.get("/", verifyToken, getRFQs);
 
-router.post("/", authorizeRoles("BUYER"), createRFQ);
-router.get("/", getRFQs);
+// Buyer-restricted actions
+router.post("/", verifyToken, isBuyer, createRFQ);
+router.put("/:id", verifyToken, isBuyer, updateRFQ);
+router.delete("/:id", verifyToken, isBuyer, deleteRFQ);
 
 export default router;

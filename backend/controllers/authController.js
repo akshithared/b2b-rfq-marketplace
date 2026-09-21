@@ -2,118 +2,109 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { query } from "../config/db.js";
 
-const generateToken = (user) => {
-  return jwt.sign(
-    {
-      id: user.id,
-      role: user.role,
-      email: user.email,
-    },
-    process.env.JWT_SECRET,
-    {
-      expiresIn: "1d",
-    }
-  );
-};
-
+// Register User
 export const register = async (req, res) => {
+  const { name, email, password, role } = req.body;
+
   try {
-    const { name, email, password, role } = req.body;
-
-    const normalizedEmail = email.trim().toLowerCase();
-
-    const existingUser = await query(
-      "SELECT id FROM users WHERE email = $1",
-      [normalizedEmail]
-    );
-
-    if (existingUser.rows.length > 0) {
-      return res.status(409).json({
-        success: false,
-        message: "An account with this email already exists.",
-      });
+    const userExists = await query("SELECT * FROM users WHERE email = $1", [email]);
+    if (userExists.rows.length > 0) {
+      return res.status(400).json({ success: false, message: "User with this email already exists." });
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
 
-    const result = await query(
-      `INSERT INTO users (name, email, password_hash, role)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, name, email, role, created_at`,
-      [name.trim(), normalizedEmail, passwordHash, role]
+    const userRole = role && ["BUYER", "SUPPLIER"].includes(role.toUpperCase()) ? role.toUpperCase() : "BUYER";
+
+    const newUser = await query(
+      `INSERT INTO users (name, email, password_hash, role) 
+       VALUES ($1, $2, $3, $4) 
+       RETURNING id, name, email, role`,
+      [name, email, hashedPassword, userRole]
     );
 
-    const user = result.rows[0];
-    const token = generateToken(user);
+    const user = newUser.rows[0];
+
+    const token = jwt.sign(
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET || "fallback_secret",
+      { expiresIn: "7d" }
+    );
 
     return res.status(201).json({
       success: true,
-      message: "Registration successful.",
-      data: {
-        user,
-        token,
-      },
+      token,
+      user,
     });
   } catch (error) {
-    console.error("Registration error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Unable to register user.",
+    console.error("Error in registration:", error);
+    return res.status(500).json({ 
+      success: false, 
+      message: error.message || "Server error during registration" 
     });
   }
 };
 
+// Login User
 export const login = async (req, res) => {
+  const { email, password } = req.body;
+
   try {
-    const { email, password } = req.body;
-
-    const normalizedEmail = email.trim().toLowerCase();
-
-    const result = await query(
-      `SELECT id, name, email, password_hash, role, created_at
-       FROM users
-       WHERE email = $1`,
-      [normalizedEmail]
-    );
-
+    // 1. Fetch user by email
+    const result = await query("SELECT * FROM users WHERE email = $1", [email]);
     if (result.rows.length === 0) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password.",
-      });
+      return res.status(400).json({ success: false, message: "Invalid email or password." });
     }
 
     const user = result.rows[0];
 
-    const passwordMatches = await bcrypt.compare(
-      password,
-      user.password_hash
-    );
-
-    if (!passwordMatches) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password.",
-      });
+    // 2. Retrieve hashed password from password_hash (or fallback column)
+    const storedHash = user.password_hash || user.password;
+    if (!storedHash) {
+      return res.status(500).json({ success: false, message: "Account setup error: No password hash stored." });
     }
 
-    delete user.password_hash;
+    // 3. Compare passwords using bcrypt
+    const isMatch = await bcrypt.compare(password, storedHash);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: "Invalid email or password." });
+    }
 
-    const token = generateToken(user);
+    // 4. Generate JWT
+    const token = jwt.sign(
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET || "fallback_secret",
+      { expiresIn: "7d" }
+    );
 
-    return res.status(200).json({
+    return res.json({
       success: true,
-      message: "Login successful.",
-      data: {
-        user,
-        token,
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
       },
     });
   } catch (error) {
-    console.error("Login error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Unable to login.",
-    });
+    console.error("Error in login:", error);
+    return res.status(500).json({ success: false, message: "Server error during login." });
+  }
+};
+
+// Get Profile
+export const getMe = async (req, res) => {
+  try {
+    const result = await query("SELECT id, name, email, role FROM users WHERE id = $1", [req.user.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "User not found." });
+    }
+
+    return res.json({ success: true, user: result.rows[0] });
+  } catch (error) {
+    console.error("Error fetching user profile:", error);
+    return res.status(500).json({ success: false, message: "Server error fetching profile." });
   }
 };

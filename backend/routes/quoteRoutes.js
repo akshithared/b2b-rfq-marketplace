@@ -1,12 +1,13 @@
 import express from "express";
-import { submitQuote, getQuotesByRFQ } from "../controllers/quoteController.js";
-import { authenticateToken, authorizeRoles } from "../middleware/authMiddleware.js";
+import { createQuote, getQuotesForRFQ } from "../controllers/quoteController.js";
+import { verifyToken, isBuyer, isSupplier } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
-router.use(authenticateToken); // Protect all quote routes
+// Supplier submits a quote
+router.post("/", verifyToken, isSupplier, createQuote);
 
-router.post("/", authorizeRoles("SUPPLIER"), submitQuote);
-router.get("/rfq/:rfqId", getQuotesByRFQ);
+// Buyer views quotes for a specific RFQ
+router.get("/rfq/:rfqId", verifyToken, isBuyer, getQuotesForRFQ);
 
 export default router;

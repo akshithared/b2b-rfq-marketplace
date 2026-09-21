@@ -1,69 +1,96 @@
-import { query } from "../config/db.js";
+import { pool } from "../config/db.js";
 
-// Create a new RFQ (Buyer only)
-export const createRFQ = async (req, res) => {
-  try {
-    const { title, description, quantity, delivery_location, deadline } = req.body;
-    const buyerId = req.user.id;
-
-    if (!title || !description || !quantity || !delivery_location || !deadline) {
-      return res.status(400).json({
-        success: false,
-        message: "Title, description, quantity, delivery location, and deadline are required.",
-      });
-    }
-
-    const result = await query(
-      `INSERT INTO rfqs (buyer_id, title, description, quantity, delivery_location, deadline)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING *`,
-      [buyerId, title.trim(), description.trim(), quantity, delivery_location.trim(), deadline]
-    );
-
-    return res.status(201).json({
-      success: true,
-      message: "RFQ created successfully.",
-      data: result.rows[0],
-    });
-  } catch (error) {
-    console.error("Error creating RFQ:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to create RFQ.",
-    });
-  }
-};
-
-// Get RFQs (Buyers get their own; Suppliers get all open RFQs with optional search)
+// Fetch all RFQs (with optional search filter)
 export const getRFQs = async (req, res) => {
   try {
     const { search } = req.query;
-    let queryText = "";
-    let params = [];
+    let query = "SELECT * FROM rfqs";
+    let queryParams = [];
 
-    if (req.user.role === "BUYER") {
-      queryText = "SELECT * FROM rfqs WHERE buyer_id = $1 ORDER BY created_at DESC";
-      params = [req.user.id];
-    } else {
-      if (search) {
-        queryText = `SELECT * FROM rfqs WHERE status = 'OPEN' AND (title ILIKE $1 OR description ILIKE $1) ORDER BY created_at DESC`;
-        params = [`%${search}%`];
-      } else {
-        queryText = "SELECT * FROM rfqs WHERE status = 'OPEN' ORDER BY created_at DESC";
-      }
+    if (search) {
+      query += " WHERE title ILIKE $1 OR description ILIKE $1";
+      queryParams.push(`%${search}%`);
     }
 
-    const result = await query(queryText, params);
+    query += " ORDER BY created_at DESC";
 
-    return res.status(200).json({
-      success: true,
-      data: result.rows,
-    });
+    const { rows } = await pool.query(query, queryParams);
+    res.json({ success: true, data: rows });
   } catch (error) {
     console.error("Error fetching RFQs:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch RFQs.",
-    });
+    res.status(500).json({ success: false, message: "Server error fetching RFQs" });
+  }
+};
+
+// Create a new RFQ (Buyer only)
+export const createRFQ = async (req, res) => {
+  const { title, description, quantity, delivery_location, deadline } = req.body;
+  const buyer_id = req.user.id;
+
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO rfqs (buyer_id, title, description, quantity, delivery_location, deadline)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [buyer_id, title, description, quantity, delivery_location, deadline]
+    );
+
+    res.status(201).json({ success: true, data: rows[0] });
+  } catch (error) {
+    console.error("Error creating RFQ:", error);
+    res.status(500).json({ success: false, message: "Server error creating RFQ" });
+  }
+};
+
+// Update an RFQ
+export const updateRFQ = async (req, res) => {
+  const { id } = req.params;
+  const { title, description, quantity, delivery_location, deadline } = req.body;
+
+  try {
+    const { rows } = await pool.query(
+      `UPDATE rfqs 
+       SET title = $1, description = $2, quantity = $3, delivery_location = $4, deadline = $5
+       WHERE id = $6 AND buyer_id = $7 RETURNING *`,
+      [title, description, quantity, delivery_location, deadline, id, req.user.id]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: "RFQ not found or unauthorized" });
+    }
+
+    res.json({ success: true, data: rows[0] });
+  } catch (error) {
+    console.error("Error updating RFQ:", error);
+    res.status(500).json({ success: false, message: "Server error updating RFQ" });
+  }
+};
+
+// Delete an RFQ
+export const deleteRFQ = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // 1. Verify RFQ exists and belongs to the requesting buyer (or admin)
+    const rfqCheck = await pool.query("SELECT * FROM rfqs WHERE id = $1", [id]);
+
+    if (rfqCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: "RFQ already deleted or does not exist." });
+    }
+
+    if (rfqCheck.rows[0].buyer_id !== req.user.id && req.user.role !== "ADMIN") {
+      return res.status(403).json({ success: false, message: "Unauthorized to delete this RFQ." });
+    }
+
+    // 2. Delete dependent quotes first to prevent foreign key constraint crash
+    // (Alternative: Ensure your SQL migration has 'ON DELETE CASCADE' on the quotes table foreign key)
+    await pool.query("DELETE FROM quotes WHERE rfq_id = $1", [id]);
+
+    // 3. Delete the RFQ using pool.query (Fixed from undefined 'query')
+    await pool.query("DELETE FROM rfqs WHERE id = $1", [id]);
+
+    return res.json({ success: true, id, message: "RFQ deleted successfully." });
+  } catch (error) {
+    console.error("Error deleting RFQ:", error);
+    return res.status(500).json({ success: false, message: "Server error deleting RFQ." });
   }
 };

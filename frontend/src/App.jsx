@@ -1,34 +1,73 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
-import Navbar from "./components/Navbar";
 import Login from "./pages/Login";
-import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 
-const ProtectedRoute = ({ children }) => {
+// Protected Route: Only allows logged-in users, otherwise redirects to login
+function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
-  if (loading) return <div style={{ padding: "40px", textAlign: "center" }}>Loading...</div>;
-  return user ? children : <Navigate to="/login" />;
-};
+
+  // Show a loading state while checking session
+  if (loading) {
+    return (
+      <div style={{ textAlign: "center", marginTop: "100px", fontSize: "1.2rem", color: "#64748b" }}>
+        Loading your session...
+      </div>
+    );
+  }
+
+  return user ? children : <Navigate to="/login" replace />;
+}
+
+// Public Route: Redirects to dashboard if user is already logged in
+function PublicRoute({ children }) {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div style={{ textAlign: "center", marginTop: "100px", fontSize: "1.2rem", color: "#64748b" }}>
+        Loading...
+      </div>
+    );
+  }
+
+  return !user ? children : <Navigate to="/dashboard" replace />;
+}
+
+function AppRoutes() {
+  return (
+    <Routes>
+      {/* Login page route */}
+      <Route 
+        path="/login" 
+        element={
+          <PublicRoute>
+            <Login />
+          </PublicRoute>
+        } 
+      />
+
+      {/* Dashboard page route (Protected) */}
+      <Route 
+        path="/dashboard" 
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        } 
+      />
+
+      {/* Fallback redirect */}
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+    </Routes>
+  );
+}
 
 export default function App() {
   return (
+    // Wrap with AuthProvider only (Do NOT wrap with BrowserRouter here if it's already in main.jsx)
     <AuthProvider>
-      <Router>
-        <Navbar />
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
-        </Routes>
-      </Router>
+      <AppRoutes />
     </AuthProvider>
   );
 }

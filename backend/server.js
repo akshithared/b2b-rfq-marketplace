@@ -1,58 +1,41 @@
 import express from "express";
 import cors from "cors";
-import helmet from "helmet";
 import dotenv from "dotenv";
-import rateLimit from "express-rate-limit";
 
-import { testDatabaseConnection } from "./config/db.js";
 import authRoutes from "./routes/authRoutes.js";
 import rfqRoutes from "./routes/rfqRoutes.js";
 import quoteRoutes from "./routes/quoteRoutes.js";
+import { pool } from "./config/db.js";
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 50,
-  message: {
-    success: false,
-    message: "Too many requests. Please try again later.",
-  },
-});
+// Middleware - origin: true automatically matches whichever port your frontend is on (5173, 5174, etc.)
+app.use(cors({
+  origin: true, 
+  credentials: true
+}));
 
-app.use(helmet());
-app.use(
-  cors({
-    origin: "http://localhost:5173",
-  })
-);
-app.use(express.json({ limit: "10kb" }));
+app.use(express.json());
 
-app.get("/api/health", (req, res) => {
-  res.json({
-    success: true,
-    message: "B2B RFQ Marketplace API is running",
-  });
-});
-
-app.use("/api/auth", authLimiter, authRoutes);
+// API Routes
+app.use("/api/auth", authRoutes);
 app.use("/api/rfqs", rfqRoutes);
 app.use("/api/quotes", quoteRoutes);
 
-const startServer = async () => {
+// Healthcheck Route
+app.get("/api/health", async (req, res) => {
   try {
-    await testDatabaseConnection();
-
-    app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
-    });
-  } catch (error) {
-    console.error("Server startup failed.");
-    process.exit(1);
+    await pool.query("SELECT 1");
+    res.json({ status: "OK", database: "Connected" });
+  } catch (err) {
+    res.status(500).json({ status: "Error", database: err.message });
   }
-};
+});
 
-startServer();
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+  console.log(`🚀 Server running smoothly on http://localhost:${PORT}`);
+});

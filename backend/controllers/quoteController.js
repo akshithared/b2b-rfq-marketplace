@@ -1,92 +1,72 @@
-import { query } from "../config/db.js";
+import { pool } from "../config/db.js";
 
-// Submit a quote for an RFQ (Supplier only)
-export const submitQuote = async (req, res) => {
+// Submit a new quotation (Supplier only)
+export const createQuote = async (req, res) => {
   try {
+    // Diagnostic check for auth middleware
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ success: false, message: "Unauthorized: User session missing." });
+    }
+
     const { rfq_id, price, delivery_days, notes } = req.body;
-    const supplierId = req.user.id;
+    const supplier_id = req.user.id;
 
-    // 1. Check if RFQ exists and is OPEN
-    const rfqCheck = await query(
-      "SELECT id, status FROM rfqs WHERE id = $1",
-      [rfq_id]
-    );
-
-    if (rfqCheck.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "RFQ not found.",
-      });
-    }
-
-    if (rfqCheck.rows[0].status !== "OPEN") {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot submit quotes for closed or cancelled RFQs.",
-      });
-    }
-
-    // 2. Insert quote into database
-    const result = await query(
+    const { rows } = await pool.query(
       `INSERT INTO quotes (rfq_id, supplier_id, price, delivery_days, notes)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
-      [rfq_id, supplierId, price, delivery_days, notes || null]
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [rfq_id, supplier_id, price, delivery_days, notes]
     );
 
-    return res.status(201).json({
-      success: true,
-      message: "Quote submitted successfully.",
-      data: result.rows[0],
-    });
+    return res.status(201).json({ success: true, data: rows[0] });
   } catch (error) {
-    if (error.code === "23505") { // Unique constraint violation (supplier already submitted)
-      return res.status(409).json({
-        success: false,
-        message: "You have already submitted a quote for this RFQ.",
-      });
-    }
-
-    console.error("Error submitting quote:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to submit quote.",
+    console.error("DETAILED ERROR creating quote:", error.message, error.detail || "");
+    return res.status(500).json({ 
+      success: false, 
+      message: error.message || "Server error creating quote" 
     });
   }
 };
 
-// Get quotes for a specific RFQ (Buyer can view all quotes for their RFQ; Supplier views their own)
-export const getQuotesByRFQ = async (req, res) => {
+// Fetch quotes submitted by the currently logged-in supplier
+export const getSupplierQuotes = async (req, res) => {
   try {
-    const { rfqId } = req.params;
-
-    let result;
-    if (req.user.role === "BUYER") {
-      result = await query(
-        `SELECT q.*, u.name as supplier_name, u.email as supplier_email
-         FROM quotes q
-         JOIN users u ON q.supplier_id = u.id
-         JOIN rfqs r ON q.rfq_id = r.id
-         WHERE q.rfq_id = $1 AND r.buyer_id = $2
-         ORDER BY q.created_at DESC`,
-        [rfqId, req.user.id]
-      );
-    } else {
-      result = await query(
-        `SELECT * FROM quotes WHERE rfq_id = $1 AND supplier_id = $2`,
-        [rfqId, req.user.id]
-      );
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ success: false, message: "Unauthorized: User session missing." });
     }
 
-    return res.status(200).json({
-      success: true,
-      data: result.rows,
-    });
+    const supplier_id = req.user.id;
+    const { rows } = await pool.query(
+      `SELECT q.*, r.title as rfq_title, r.delivery_location, r.deadline 
+       FROM quotes q 
+       JOIN rfqs r ON q.rfq_id = r.id 
+       WHERE q.supplier_id = $1 
+       ORDER BY q.created_at DESC`,
+      [supplier_id]
+    );
+    return res.json({ success: true, data: rows });
   } catch (error) {
-    console.error("Error fetching quotes:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch quotes.",
-    });
+    console.error("Error fetching supplier quotes:", error.message);
+    return res.status(500).json({ success: false, message: "Server error fetching supplier quotes" });
+  }
+};
+
+// Fetch quotes received for a specific buyer's RFQ
+export const getQuotesForRFQ = async (req, res) => {
+  try {
+    const { rfqId } = req.params;
+    
+    const { rows } = await pool.query(
+      `SELECT q.*, u.email as supplier_email, u.name as supplier_name 
+       FROM quotes q
+       LEFT JOIN users u ON q.supplier_id = u.id
+       WHERE q.rfq_id = $1
+       ORDER BY q.created_at DESC`,
+      [rfqId]
+    );
+
+    return res.json({ success: true, data: rows });
+  } catch (error) {
+    console.error("Error fetching quotes for RFQ:", error.message);
+    return res.status(500).json({ success: false, message: "Server error fetching quotes" });
   }
 };
