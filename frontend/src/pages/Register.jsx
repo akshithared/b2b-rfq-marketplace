@@ -7,7 +7,7 @@ export default function Register() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("buyer");
+  const [role, setRole] = useState("BUYER"); // Updated to uppercase to match backend requirement
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -90,8 +90,8 @@ export default function Register() {
               onChange={(e) => setRole(e.target.value)}
               style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1", background: "#fff" }}
             >
-              <option value="buyer">Buyer</option>
-              <option value="supplier">Supplier</option>
+              <option value="BUYER">Buyer</option>
+              <option value="SUPPLIER">Supplier</option>
             </select>
           </div>
 
