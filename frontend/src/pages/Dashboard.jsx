@@ -31,7 +31,7 @@ export default function Dashboard() {
   const [notes, setNotes] = useState("");
   const [submittingQuote, setSubmittingQuote] = useState(false);
 
-  // Supplier My Quotes State (Problem 3 Fix: Robust LocalStorage Sync)
+  // Supplier My Quotes State (LocalStorage & API Sync)
   const [myQuotes, setMyQuotes] = useState(() => {
     try {
       const saved = localStorage.getItem("supplier_my_quotes");
@@ -44,26 +44,35 @@ export default function Dashboard() {
   const [loadingMyQuotes, setLoadingMyQuotes] = useState(false);
   const [activeTab, setActiveTab] = useState("marketplace");
 
-  // Buyer Quotes View State (Problem 4 Fix)
+  // Buyer Quotes View State
   const [selectedRfqQuotes, setSelectedRfqQuotes] = useState(null);
   const [quotesList, setQuotesList] = useState([]);
   const [loadingQuotes, setLoadingQuotes] = useState(false);
 
-  // Fetch RFQs
+  // Fetch RFQs (Buyer gets only their own, Supplier gets all marketplace RFQs)
   const fetchRFQs = useCallback(async () => {
     setLoading(true);
     try {
       const endpoint = search ? `/rfqs?search=${encodeURIComponent(search)}` : "/rfqs";
       const res = await API.get(endpoint);
-      setRfqs(res.data.data || res.data.rfqs || res.data || []);
+      let allRfqs = res.data.data || res.data.rfqs || res.data || [];
+      
+      // If user is BUYER, strictly filter to only show RFQs created by this buyer
+      if (user && user.role === "BUYER") {
+        allRfqs = allRfqs.filter(
+          (rfq) => rfq.buyer_id === user.id || rfq.user_id === user.id || rfq.userId === user.id
+        );
+      }
+      
+      setRfqs(allRfqs);
     } catch (err) {
       console.error("Error fetching RFQs:", err);
     } finally {
       setLoading(false);
     }
-  }, [search]);
+  }, [search, user]);
 
-  // Fetch Supplier Quotes from Backend and sync with localStorage
+  // Fetch Supplier Quotes
   const fetchSupplierQuotes = useCallback(async () => {
     setLoadingMyQuotes(true);
     try {
@@ -74,7 +83,7 @@ export default function Dashboard() {
         localStorage.setItem("supplier_my_quotes", JSON.stringify(apiQuotes));
       }
     } catch (err) {
-      console.error("Error fetching supplier quotes from API, using local storage cache:", err);
+      console.error("Error fetching supplier quotes from API:", err);
     } finally {
       setLoadingMyQuotes(false);
     }
@@ -87,18 +96,9 @@ export default function Dashboard() {
         fetchSupplierQuotes();
       }
     }
-
-    const onFocus = () => {
-      if (user) {
-        fetchRFQs();
-        if (user.role === "SUPPLIER") fetchSupplierQuotes();
-      }
-    };
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
   }, [user, fetchRFQs, fetchSupplierQuotes]);
 
-  // LocalStorage Sync
+  // LocalStorage Sync for Supplier Quotes
   useEffect(() => {
     try {
       localStorage.setItem("supplier_my_quotes", JSON.stringify(myQuotes));
@@ -141,7 +141,6 @@ export default function Dashboard() {
     setEditDeadline(rfq.deadline ? rfq.deadline.split("T")[0] : "");
   };
 
-  // Problem 4 Fix: Complete Buyer RFQ Update Handler
   const handleUpdateRfq = async (e) => {
     e.preventDefault();
     try {
@@ -167,13 +166,7 @@ export default function Dashboard() {
       setRfqs((prevRfqs) => prevRfqs.filter((rfq) => rfq.id !== rfqId));
       if (selectedRfqQuotes === rfqId) setSelectedRfqQuotes(null);
     } catch (err) {
-      const status = err.response?.status;
-      const message = err.response?.data?.message || "Server error deleting RFQ.";
-      if (status === 404) {
-        setRfqs((prevRfqs) => prevRfqs.filter((rfq) => rfq.id !== rfqId));
-      } else {
-        alert(message);
-      }
+      alert(err.response?.data?.message || "Server error deleting RFQ.");
     }
   };
 
@@ -252,7 +245,7 @@ export default function Dashboard() {
   if (authLoading) {
     return (
       <div className="container" style={{ padding: "40px 0", textAlign: "center" }}>
-        <p style={{ color: "var(--text-muted)" }}>Loading workspace credentials...</p>
+        <p style={{ color: "var(--text-muted)" }}>Loading workspace...</p>
       </div>
     );
   }
@@ -271,11 +264,11 @@ export default function Dashboard() {
     <div className="container">
       <div style={{ marginBottom: "28px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <h2 style={{ fontSize: "1.75rem", fontWeight: "700", letterSpacing: "-0.02em" }}>
+          <h2 style={{ fontSize: "1.75rem", fontWeight: "700" }}>
             {role === "BUYER" ? "Buyer Workspace" : "Supplier Opportunity Hub"}
           </h2>
           <p style={{ color: "var(--text-muted)", fontSize: "0.95rem", marginTop: "4px" }}>
-            Account: <strong>{user?.email || "Authenticated User"}</strong>
+            Account: <strong>{user?.email}</strong>
           </p>
         </div>
         
@@ -283,18 +276,7 @@ export default function Dashboard() {
           <span className={`badge badge-${role.toLowerCase()}`} style={{ fontSize: "0.85rem", padding: "6px 14px" }}>
             Role: {role}
           </span>
-          <button 
-            onClick={logout} 
-            className="btn btn-secondary" 
-            style={{ 
-              fontSize: "0.85rem", 
-              padding: "6px 14px", 
-              backgroundColor: "#fee2e2", 
-              color: "#b91c1c", 
-              border: "1px solid #fca5a5",
-              cursor: "pointer"
-            }}
-          >
+          <button onClick={logout} className="btn btn-secondary" style={{ backgroundColor: "#fee2e2", color: "#b91c1c" }}>
             Logout
           </button>
         </div>
@@ -327,38 +309,31 @@ export default function Dashboard() {
             <div>
               <div className="card" style={{ padding: "16px 20px" }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label htmlFor="rfq-search-input">Filter Marketplace RFQs</label>
+                  <label>Filter Marketplace RFQs</label>
                   <input
-                    id="rfq-search-input"
-                    name="search"
                     type="text"
-                    placeholder="Search active RFQs by product name or keyword..."
+                    placeholder="Search active RFQs..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                   />
                 </div>
               </div>
 
-              <h3 style={{ fontSize: "1.25rem", fontWeight: "700", margin: "24px 0 16px" }}>Open Marketplace Opportunities</h3>
+              <h3 style={{ fontSize: "1.25rem", fontWeight: "700", margin: "24px 0 16px" }}>Open Opportunities</h3>
 
               {loading ? (
-                <div className="empty-state">
-                  <p>Searching marketplace requests...</p>
-                </div>
+                <div className="empty-state"><p>Loading...</p></div>
               ) : rfqs.length === 0 ? (
-                <div className="empty-state">
-                  <h4>No Opportunities Found</h4>
-                  <p style={{ marginTop: "6px" }}>No open RFQs match your current search terms.</p>
-                </div>
+                <div className="empty-state"><h4>No Opportunities Found</h4></div>
               ) : (
                 <div className="grid">
                   {rfqs.map((rfq) => {
                     const existingQuote = myQuotes.find((q) => q.rfq_id === rfq.id);
 
                     return (
-                      <div key={rfq.id} className="card card-interactive" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                      <div key={rfq.id} className="card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
                         <div>
-                          <div className="rfq-card-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                             <h4 className="rfq-title">{rfq.title}</h4>
                             {existingQuote && (
                               <span className="badge" style={{ background: "#d1fae5", color: "#065f46", fontSize: "0.75rem", padding: "2px 8px" }}>
@@ -366,14 +341,10 @@ export default function Dashboard() {
                               </span>
                             )}
                           </div>
-
-                          <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", margin: "8px 0 16px" }}>
-                            {rfq.description}
-                          </p>
-
+                          <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", margin: "8px 0 16px" }}>{rfq.description}</p>
                           <div className="rfq-meta">
-                            <div><strong>Quantity Needed:</strong> {rfq.quantity} units</div>
-                            <div><strong>Delivery To:</strong> {rfq.delivery_location}</div>
+                            <div><strong>Quantity:</strong> {rfq.quantity} units</div>
+                            <div><strong>Location:</strong> {rfq.delivery_location}</div>
                             <div><strong>Deadline:</strong> {rfq.deadline ? new Date(rfq.deadline).toLocaleDateString() : "N/A"}</div>
                           </div>
                         </div>
@@ -381,57 +352,25 @@ export default function Dashboard() {
                         {activeRfqId === rfq.id ? (
                           <form onSubmit={handleSubmitQuote} style={{ marginTop: "16px", background: "#f1f5f9", padding: "16px", borderRadius: "8px" }}>
                             <h5 style={{ fontWeight: "700", marginBottom: "12px", fontSize: "0.95rem" }}>
-                              {existingQuote ? "Edit Quotation" : "Submit Quotation"}
+                              {existingQuote ? "Edit Quotation" : "Prepare Quotation"}
                             </h5>
-
                             <div className="form-group">
-                              <label htmlFor={`quote-price-${rfq.id}`}>Quoted Price ($)</label>
-                              <input
-                                id={`quote-price-${rfq.id}`}
-                                name="price"
-                                type="number"
-                                required
-                                min="1"
-                                step="0.01"
-                                value={price}
-                                onChange={(e) => setPrice(e.target.value)}
-                                placeholder="e.g. 4500.00"
-                              />
+                              <label>Quoted Price ($)</label>
+                              <input type="number" required min="1" step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="e.g. 4500" />
                             </div>
-
                             <div className="form-group">
-                              <label htmlFor={`quote-days-${rfq.id}`}>Estimated Delivery (Days)</label>
-                              <input
-                                id={`quote-days-${rfq.id}`}
-                                name="deliveryDays"
-                                type="number"
-                                required
-                                min="1"
-                                value={deliveryDays}
-                                onChange={(e) => setDeliveryDays(e.target.value)}
-                                placeholder="e.g. 14"
-                              />
+                              <label>Delivery Days</label>
+                              <input type="number" required min="1" value={deliveryDays} onChange={(e) => setDeliveryDays(e.target.value)} placeholder="e.g. 14" />
                             </div>
-
                             <div className="form-group">
-                              <label htmlFor={`quote-notes-${rfq.id}`}>Message / Payment Terms</label>
-                              <textarea
-                                id={`quote-notes-${rfq.id}`}
-                                name="notes"
-                                rows="2"
-                                value={notes}
-                                onChange={(e) => setNotes(e.target.value)}
-                                placeholder="Include terms, warranties, or transport details..."
-                              ></textarea>
+                              <label>Notes / Terms</label>
+                              <textarea rows="2" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Terms & conditions..."></textarea>
                             </div>
-
                             <div style={{ display: "flex", gap: "10px" }}>
                               <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={submittingQuote}>
                                 {submittingQuote ? "Saving..." : existingQuote ? "Update Quote" : "Submit Quote"}
                               </button>
-                              <button type="button" onClick={() => setActiveRfqId(null)} className="btn btn-secondary">
-                                Cancel
-                              </button>
+                              <button type="button" onClick={() => setActiveRfqId(null)} className="btn btn-secondary">Cancel</button>
                             </div>
                           </form>
                         ) : (
@@ -451,13 +390,9 @@ export default function Dashboard() {
             </div>
           ) : (
             <div>
-              <h3 style={{ fontSize: "1.25rem", fontWeight: "700", margin: "16px 0" }}>Quotations You Have Submitted</h3>
-
+              <h3 style={{ fontSize: "1.25rem", fontWeight: "700", margin: "16px 0" }}>My Submitted Quotations</h3>
               {myQuotes.length === 0 ? (
-                <div className="empty-state">
-                  <h4>No Submitted Quotations</h4>
-                  <p style={{ marginTop: "6px" }}>You haven't submitted any bids yet. Browse marketplace opportunities to submit a quote.</p>
-                </div>
+                <div className="empty-state"><h4>No Submitted Quotations Yet</h4></div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
                   {myQuotes.map((q) => (
@@ -465,12 +400,12 @@ export default function Dashboard() {
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                         <div>
                           <h4 style={{ fontSize: "1.1rem", fontWeight: "700" }}>{q.rfq_title || "RFQ Opportunity"}</h4>
-                          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Delivery Destination: {q.delivery_location || "N/A"}</p>
+                          <p style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Destination: {q.delivery_location || "N/A"}</p>
                         </div>
                         <span style={{ fontSize: "1.2rem", fontWeight: "700", color: "var(--primary)" }}>${q.price}</span>
                       </div>
                       <div style={{ fontSize: "0.9rem", color: "var(--text-muted)", display: "flex", gap: "24px", marginTop: "8px" }}>
-                        <span><strong>Estimated Delivery:</strong> {q.delivery_days} days</span>
+                        <span><strong>Delivery:</strong> {q.delivery_days} days</span>
                         {q.notes && <span><strong>Notes:</strong> {q.notes}</span>}
                       </div>
                     </div>
@@ -489,12 +424,12 @@ export default function Dashboard() {
             <h3 style={{ fontSize: "1.2rem", fontWeight: "700", marginBottom: "6px" }}>Post New RFQ</h3>
             <form onSubmit={handleCreateRFQ}>
               <div className="form-group">
-                <label>Product or Service Name</label>
-                <input type="text" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., 500 Units High-Grade Steel Valves" />
+                <label>Product Name</label>
+                <input type="text" required value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g., Industrial Valves" />
               </div>
               <div className="form-group">
-                <label>Requirement Description</label>
-                <textarea required rows="3" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Provide technical requirements..."></textarea>
+                <label>Description</label>
+                <textarea required rows="3" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Requirements..."></textarea>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "16px" }}>
                 <div className="form-group">
@@ -506,25 +441,25 @@ export default function Dashboard() {
                   <input type="text" required value={deliveryLocation} onChange={(e) => setDeliveryLocation(e.target.value)} />
                 </div>
                 <div className="form-group">
-                  <label>RFQ Deadline</label>
+                  <label>Deadline</label>
                   <input type="date" required value={deadline} onChange={(e) => setDeadline(e.target.value)} />
                 </div>
               </div>
               <button type="submit" className="btn btn-primary" style={{ width: "100%", marginTop: "10px" }} disabled={submitting}>
-                {submitting ? "Publishing Request..." : "Post RFQ to Marketplace"}
+                {submitting ? "Publishing..." : "Post RFQ"}
               </button>
             </form>
           </div>
 
-          <h3 style={{ fontSize: "1.25rem", fontWeight: "700", margin: "32px 0 16px" }}>Your Submitted Requests</h3>
+          <h3 style={{ fontSize: "1.25rem", fontWeight: "700", margin: "32px 0 16px" }}>Your Posted RFQs</h3>
           {loading ? (
-            <div className="empty-state"><p>Fetching your RFQs...</p></div>
+            <div className="empty-state"><p>Loading your RFQs...</p></div>
           ) : rfqs.length === 0 ? (
-            <div className="empty-state"><h4>No Active Requests</h4></div>
+            <div className="empty-state"><h4>You have not posted any RFQs yet.</h4></div>
           ) : (
             <div className="grid">
               {rfqs.map((rfq) => (
-                <div key={rfq.id} className="card card-interactive" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+                <div key={rfq.id} className="card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
                   <div>
                     <h4 className="rfq-title">{rfq.title}</h4>
                     <p style={{ fontSize: "0.9rem", color: "var(--text-muted)", margin: "8px 0 16px" }}>{rfq.description}</p>
@@ -536,18 +471,15 @@ export default function Dashboard() {
                   </div>
 
                   {editingRfqId === rfq.id ? (
-                    // Problem 4 Fix: Fully functional Edit Form for Buyers
                     <form onSubmit={handleUpdateRfq} style={{ background: "#f8fafc", padding: "12px", borderRadius: "8px", marginTop: "12px" }}>
                       <div className="form-group" style={{ marginBottom: "8px" }}>
-                        <label style={{ fontSize: "0.8rem" }}>Title</label>
-                        <input type="text" required value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+                        <input type="text" required value={editTitle} onChange={(e) => setEditTitle(e.target.value)} placeholder="Title" />
                       </div>
                       <div className="form-group" style={{ marginBottom: "8px" }}>
-                        <label style={{ fontSize: "0.8rem" }}>Description</label>
-                        <textarea rows="2" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
+                        <textarea rows="2" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} placeholder="Description" />
                       </div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
-                        <input type="number" placeholder="Quantity" value={editQuantity} onChange={(e) => setEditQuantity(e.target.value)} />
+                        <input type="number" placeholder="Qty" value={editQuantity} onChange={(e) => setEditQuantity(e.target.value)} />
                         <input type="text" placeholder="Location" value={editDeliveryLocation} onChange={(e) => setEditDeliveryLocation(e.target.value)} />
                       </div>
                       <div style={{ display: "flex", gap: "8px" }}>
@@ -559,7 +491,7 @@ export default function Dashboard() {
                     <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
                       <button onClick={() => viewQuotesForRFQ(rfq.id)} className="btn btn-secondary" style={{ flex: 1 }}>View Bids</button>
                       <button onClick={() => startEditRfq(rfq)} className="btn btn-secondary" style={{ fontSize: "0.8rem" }}>Edit</button>
-                      <button onClick={() => handleDeleteRfq(rfq.id)} className="btn btn-danger" style={{ fontSize: "0.8rem" }}>Delete</button>
+                      <button onClick={() => handleDeleteRfq(rfq.id)} className="btn btn-danger" style={{ fontSize: "0.8rem", background: "#fee2e2", color: "#b91c1c", border: "1px solid #fca5a5" }}>Delete</button>
                     </div>
                   )}
                 </div>
@@ -567,29 +499,28 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* Problem 4 Fix: Proper Supplier Bids Viewer for Buyers */}
           {selectedRfqQuotes && (
             <div className="card" style={{ marginTop: "32px", borderLeft: "4px solid var(--primary)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                <h3 style={{ fontSize: "1.15rem", fontWeight: "700" }}>Supplier Bids Received for RFQ #{selectedRfqQuotes}</h3>
+                <h3 style={{ fontSize: "1.15rem", fontWeight: "700" }}>Supplier Bids Received</h3>
                 <button onClick={() => setSelectedRfqQuotes(null)} className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: "0.8rem" }}>Close</button>
               </div>
               {loadingQuotes ? (
-                <p>Loading quotes...</p>
+                <p>Loading bids...</p>
               ) : quotesList.length === 0 ? (
-                <p style={{ color: "var(--text-muted)" }}>No bids received yet for this request.</p>
+                <p style={{ color: "var(--text-muted)" }}>No bids received yet.</p>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  {quotesList.map((q) => (
+                  {quotesList.link || quotesList.map ? quotesList.map((q) => (
                     <div key={q.id} style={{ padding: "12px", border: "1px solid var(--border)", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div>
                         <strong>Price: ${q.price}</strong> ({q.delivery_days} days delivery)
                         <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "2px" }}>
-                          Supplier: {q.supplier_email || q.supplier_name || "Verified Supplier"} {q.notes ? `- "${q.notes}"` : ""}
+                          Supplier: {q.supplier_email || "Verified Supplier"} {q.notes ? `- "${q.notes}"` : ""}
                         </div>
                       </div>
                     </div>
-                  ))}
+                  )) : null}
                 </div>
               )}
             </div>
