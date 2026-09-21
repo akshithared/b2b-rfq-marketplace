@@ -1,10 +1,9 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Login from "./pages/Login";
-import Register from "./pages/Register"; // <--- ఇక్కడ రిజిస్టర్ ఇంపోర్ట్ చేయబడింది
+import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 
-// Protected Route: Only allows logged-in users, otherwise redirects to login
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
 
@@ -19,7 +18,6 @@ function ProtectedRoute({ children }) {
   return user ? children : <Navigate to="/login" replace />;
 }
 
-// Public Route: Redirects to dashboard if user is already logged in
 function PublicRoute({ children }) {
   const { user, loading } = useAuth();
 
@@ -37,7 +35,6 @@ function PublicRoute({ children }) {
 function AppRoutes() {
   return (
     <Routes>
-      {/* Login page route */}
       <Route 
         path="/login" 
         element={
@@ -47,7 +44,6 @@ function AppRoutes() {
         } 
       />
 
-      {/* Register page route (ఇక్కడ పర్‌ఫెక్ట్‌గా యాడ్ చేయబడింది) */}
       <Route 
         path="/register" 
         element={
@@ -57,7 +53,6 @@ function AppRoutes() {
         } 
       />
 
-      {/* Dashboard page route (Protected) */}
       <Route 
         path="/dashboard" 
         element={
@@ -67,7 +62,6 @@ function AppRoutes() {
         } 
       />
 
-      {/* Fallback redirect */}
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
