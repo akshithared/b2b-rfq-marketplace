@@ -31,16 +31,8 @@ export default function Dashboard() {
   const [notes, setNotes] = useState("");
   const [submittingQuote, setSubmittingQuote] = useState(false);
 
-  // Supplier My Quotes State (LocalStorage & API Sync)
-  const [myQuotes, setMyQuotes] = useState(() => {
-    try {
-      const saved = localStorage.getItem("supplier_my_quotes");
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-  
+  // Supplier My Quotes State (User-Specific LocalStorage Key)
+  const [myQuotes, setMyQuotes] = useState([]);
   const [loadingMyQuotes, setLoadingMyQuotes] = useState(false);
   const [activeTab, setActiveTab] = useState("marketplace");
 
@@ -49,7 +41,32 @@ export default function Dashboard() {
   const [quotesList, setQuotesList] = useState([]);
   const [loadingQuotes, setLoadingQuotes] = useState(false);
 
-  // Fetch RFQs (Buyer gets only their own, Supplier gets all marketplace RFQs)
+  // Load user-specific quotes from localStorage when user changes
+  useEffect(() => {
+    if (user && user.email) {
+      try {
+        const storageKey = `supplier_quotes_${user.email}`;
+        const saved = localStorage.getItem(storageKey);
+        setMyQuotes(saved ? JSON.parse(saved) : []);
+      } catch {
+        setMyQuotes([]);
+      }
+    }
+  }, [user]);
+
+  // Save quotes to user-specific localStorage key
+  useEffect(() => {
+    if (user && user.email) {
+      try {
+        const storageKey = `supplier_quotes_${user.email}`;
+        localStorage.setItem(storageKey, JSON.stringify(myQuotes));
+      } catch (e) {
+        console.error("Failed to save quotes locally", e);
+      }
+    }
+  }, [myQuotes, user]);
+
+  // Fetch RFQs
   const fetchRFQs = useCallback(async () => {
     setLoading(true);
     try {
@@ -57,7 +74,6 @@ export default function Dashboard() {
       const res = await API.get(endpoint);
       let allRfqs = res.data.data || res.data.rfqs || res.data || [];
       
-      // If user is BUYER, strictly filter to only show RFQs created by this buyer
       if (user && user.role === "BUYER") {
         allRfqs = allRfqs.filter(
           (rfq) => rfq.buyer_id === user.id || rfq.user_id === user.id || rfq.userId === user.id
@@ -72,22 +88,22 @@ export default function Dashboard() {
     }
   }, [search, user]);
 
-  // Fetch Supplier Quotes
+  // Fetch Supplier Quotes from Backend
   const fetchSupplierQuotes = useCallback(async () => {
+    if (!user || user.role !== "SUPPLIER") return;
     setLoadingMyQuotes(true);
     try {
       const res = await API.get("/quotes/supplier");
       const apiQuotes = res.data.data || res.data || [];
       if (Array.isArray(apiQuotes)) {
         setMyQuotes(apiQuotes);
-        localStorage.setItem("supplier_my_quotes", JSON.stringify(apiQuotes));
       }
     } catch (err) {
       console.error("Error fetching supplier quotes from API:", err);
     } finally {
       setLoadingMyQuotes(false);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (user) {
@@ -98,14 +114,13 @@ export default function Dashboard() {
     }
   }, [user, fetchRFQs, fetchSupplierQuotes]);
 
-  // LocalStorage Sync for Supplier Quotes
-  useEffect(() => {
-    try {
-      localStorage.setItem("supplier_my_quotes", JSON.stringify(myQuotes));
-    } catch (e) {
-      console.error("Failed to save quotes locally", e);
+  // Handle Logout cleanly
+  const handleLogout = () => {
+    if (user && user.email) {
+      // Optional: clear or keep user specific cache, but ensure switching accounts doesn't leak old data
     }
-  }, [myQuotes]);
+    logout();
+  };
 
   // Handle Create RFQ (Buyer)
   const handleCreateRFQ = async (e) => {
@@ -276,7 +291,7 @@ export default function Dashboard() {
           <span className={`badge badge-${role.toLowerCase()}`} style={{ fontSize: "0.85rem", padding: "6px 14px" }}>
             Role: {role}
           </span>
-          <button onClick={logout} className="btn btn-secondary" style={{ backgroundColor: "#fee2e2", color: "#b91c1c" }}>
+          <button onClick={handleLogout} className="btn btn-secondary" style={{ backgroundColor: "#fee2e2", color: "#b91c1c" }}>
             Logout
           </button>
         </div>
@@ -491,7 +506,7 @@ export default function Dashboard() {
                     <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
                       <button onClick={() => viewQuotesForRFQ(rfq.id)} className="btn btn-secondary" style={{ flex: 1 }}>View Bids</button>
                       <button onClick={() => startEditRfq(rfq)} className="btn btn-secondary" style={{ fontSize: "0.8rem" }}>Edit</button>
-                      <button onClick={() => handleDeleteRfq(rfq.id)} className="btn btn-danger" style={{ fontSize: "0.8rem", background: "#fee2e2", color: "#b91c1c", border: "1px solid #fca5a5" }}>Delete</button>
+                      <button onClick={() => handleDeleteRfq(rfq.id)} className="btn btn-danger" style={{ fontSize: "0.85rem", backgroundColor: "#fee2e2", color: "#b91c1c", border: "1px solid #fca5a5" }}>Delete</button>
                     </div>
                   )}
                 </div>
@@ -511,7 +526,7 @@ export default function Dashboard() {
                 <p style={{ color: "var(--text-muted)" }}>No bids received yet.</p>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                  {quotesList.link || quotesList.map ? quotesList.map((q) => (
+                  {quotesList.map((q) => (
                     <div key={q.id} style={{ padding: "12px", border: "1px solid var(--border)", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div>
                         <strong>Price: ${q.price}</strong> ({q.delivery_days} days delivery)
@@ -520,7 +535,7 @@ export default function Dashboard() {
                         </div>
                       </div>
                     </div>
-                  )) : null}
+                  ))}
                 </div>
               )}
             </div>
