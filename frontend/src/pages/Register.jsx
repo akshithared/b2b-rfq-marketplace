@@ -7,7 +7,8 @@ export default function Register() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState("BUYER"); // Updated to uppercase to match backend requirement
+  const [showPassword, setShowPassword] = useState(false); // <--- Password toggle state
+  const [role, setRole] = useState("BUYER");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -16,6 +17,14 @@ export default function Register() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+
+    // Email format validation check to prevent dummy/invalid emails
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -71,16 +80,32 @@ export default function Register() {
             />
           </div>
 
-          <div className="form-group" style={{ marginBottom: "16px" }}>
+          {/* Password field with Eye Toggle */}
+          <div className="form-group" style={{ marginBottom: "16px", position: "relative" }}>
             <label style={{ display: "block", fontWeight: "600", marginBottom: "6px" }}>Password</label>
             <input
-              type="password"
+              type={showPassword ? "text" : "password"}
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+              style={{ width: "100%", padding: "10px 40px 10px 10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
             />
+            <span
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                position: "absolute",
+                right: "12px",
+                top: "38px",
+                cursor: "pointer",
+                fontSize: "1.1rem",
+                color: "#64748b",
+                userSelect: "none"
+              }}
+              title={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? "👁️" : "👁️‍🗨️"}
+            </span>
           </div>
 
           <div className="form-group" style={{ marginBottom: "20px" }}>

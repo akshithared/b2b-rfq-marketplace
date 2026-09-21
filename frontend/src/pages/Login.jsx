@@ -6,6 +6,7 @@ import API from "../api/axios";
 export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false); // <--- Password toggle state
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -14,17 +15,21 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    
+    // Email format validation check
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // Make API call to your backend login endpoint
       const res = await API.post("/auth/login", { email, password });
-      
       const { user, token } = res.data;
 
-      // Pass user and token to AuthContext so it saves to localStorage & updates state
       login(user, token);
-      
       navigate("/dashboard");
     } catch (err) {
       const apiMessage = err.response?.data?.message || err.message;
@@ -48,58 +53,70 @@ export default function Login() {
           </div>
         )}
 
-<form onSubmit={handleSubmit} autoComplete="off">
-  <div className="form-group" style={{ marginBottom: "16px" }}>
-    <label htmlFor="login-email" style={{ display: "block", fontWeight: "600", marginBottom: "6px" }}>
-      Email Address
-    </label>
-    <input
-      id="login-email"
-      name="login_email_field"
-      type="email"
-      required
-      autoComplete="off"
-      value={email}
-      onChange={(e) => setEmail(e.target.value)}
-      placeholder="name@company.com"
-      style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
-    />
-  </div>
+        <form onSubmit={handleSubmit} autoComplete="off">
+          <div className="form-group" style={{ marginBottom: "16px" }}>
+            <label htmlFor="login-email" style={{ display: "block", fontWeight: "600", marginBottom: "6px" }}>
+              Email Address
+            </label>
+            <input
+              id="login-email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@company.com"
+              style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+            />
+          </div>
 
-  <div className="form-group" style={{ marginBottom: "20px" }}>
-    <label htmlFor="login-password" style={{ display: "block", fontWeight: "600", marginBottom: "6px" }}>
-      Password
-    </label>
-    <input
-      id="login-password"
-      name="login_password_field"
-      type="password"
-      required
-      autoComplete="new-password"
-      value={password}
-      onChange={(e) => setPassword(e.target.value)}
-      placeholder="••••••••"
-      style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
-    />
-  </div>
+          {/* Password field with Eye Toggle */}
+          <div className="form-group" style={{ marginBottom: "20px", position: "relative" }}>
+            <label htmlFor="login-password" style={{ display: "block", fontWeight: "600", marginBottom: "6px" }}>
+              Password
+            </label>
+            <input
+              id="login-password"
+              type={showPassword ? "text" : "password"}
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              style={{ width: "100%", padding: "10px 40px 10px 10px", borderRadius: "6px", border: "1px solid #cbd5e1" }}
+            />
+            <span
+              onClick={() => setShowPassword(!showPassword)}
+              style={{
+                position: "absolute",
+                right: "12px",
+                top: "38px",
+                cursor: "pointer",
+                fontSize: "1.1rem",
+                color: "#64748b",
+                userSelect: "none"
+              }}
+              title={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? "👁️" : "👁️‍🗨️"}
+            </span>
+          </div>
 
-  <button 
-    type="submit" 
-    disabled={loading}
-    style={{ 
-      width: "100%", 
-      padding: "12px", 
-      backgroundColor: "var(--primary, #2563eb)", 
-      color: "#fff", 
-      border: "none", 
-      borderRadius: "6px", 
-      fontWeight: "600", 
-      cursor: "pointer" 
-    }}
-  >
-    {loading ? "Signing In..." : "Sign In"}
-  </button>
-</form>
+          <button 
+            type="submit" 
+            disabled={loading}
+            style={{ 
+              width: "100%", 
+              padding: "12px", 
+              backgroundColor: "var(--primary, #2563eb)", 
+              color: "#fff", 
+              border: "none", 
+              borderRadius: "6px", 
+              fontWeight: "600", 
+              cursor: "pointer" 
+            }}
+          >
+            {loading ? "Signing In..." : "Sign In"}
+          </button>
+        </form>
 
         <p style={{ marginTop: "20px", fontSize: "0.875rem", color: "#64748b", textAlign: "center" }}>
           Don't have an account? <Link to="/register" style={{ color: "#2563eb", fontWeight: "600" }}>Create one</Link>

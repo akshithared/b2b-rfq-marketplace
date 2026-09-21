@@ -31,7 +31,7 @@ export default function Dashboard() {
   const [notes, setNotes] = useState("");
   const [submittingQuote, setSubmittingQuote] = useState(false);
 
-  // Supplier My Quotes State (localStorage తో నిల్వ ఉంచబడుతుంది)
+  // Supplier My Quotes State (Problem 3 Fix: Robust LocalStorage Sync)
   const [myQuotes, setMyQuotes] = useState(() => {
     try {
       const saved = localStorage.getItem("supplier_my_quotes");
@@ -44,7 +44,7 @@ export default function Dashboard() {
   const [loadingMyQuotes, setLoadingMyQuotes] = useState(false);
   const [activeTab, setActiveTab] = useState("marketplace");
 
-  // Buyer Quotes View State
+  // Buyer Quotes View State (Problem 4 Fix)
   const [selectedRfqQuotes, setSelectedRfqQuotes] = useState(null);
   const [quotesList, setQuotesList] = useState([]);
   const [loadingQuotes, setLoadingQuotes] = useState(false);
@@ -69,7 +69,7 @@ export default function Dashboard() {
     try {
       const res = await API.get("/quotes/supplier");
       const apiQuotes = res.data.data || res.data || [];
-      if (apiQuotes.length > 0) {
+      if (Array.isArray(apiQuotes)) {
         setMyQuotes(apiQuotes);
         localStorage.setItem("supplier_my_quotes", JSON.stringify(apiQuotes));
       }
@@ -98,7 +98,7 @@ export default function Dashboard() {
     return () => window.removeEventListener("focus", onFocus);
   }, [user, fetchRFQs, fetchSupplierQuotes]);
 
-  // LocalStorage లో మై కోటేషన్స్ మారినప్పుడల్లా సేవ్ అవ్వడానికి
+  // LocalStorage Sync
   useEffect(() => {
     try {
       localStorage.setItem("supplier_my_quotes", JSON.stringify(myQuotes));
@@ -141,6 +141,7 @@ export default function Dashboard() {
     setEditDeadline(rfq.deadline ? rfq.deadline.split("T")[0] : "");
   };
 
+  // Problem 4 Fix: Complete Buyer RFQ Update Handler
   const handleUpdateRfq = async (e) => {
     e.preventDefault();
     try {
@@ -239,9 +240,10 @@ export default function Dashboard() {
     setSelectedRfqQuotes(rfqId);
     try {
       const res = await API.get(`/quotes/rfq/${rfqId}`);
-      setQuotesList(res.data.data || []);
+      setQuotesList(res.data.data || res.data || []);
     } catch (err) {
       console.error("Error fetching quotes:", err);
+      setQuotesList([]);
     } finally {
       setLoadingQuotes(false);
     }
@@ -480,7 +482,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* BUYER WORKSPACE (కొనసాగింపు...) */}
+      {/* BUYER WORKSPACE */}
       {role === "BUYER" && (
         <div>
           <div className="card">
@@ -532,10 +534,26 @@ export default function Dashboard() {
                       <div><strong>Deadline:</strong> {rfq.deadline ? new Date(rfq.deadline).toLocaleDateString() : "N/A"}</div>
                     </div>
                   </div>
+
                   {editingRfqId === rfq.id ? (
+                    // Problem 4 Fix: Fully functional Edit Form for Buyers
                     <form onSubmit={handleUpdateRfq} style={{ background: "#f8fafc", padding: "12px", borderRadius: "8px", marginTop: "12px" }}>
-                      <input type="text" required value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
-                      <button type="submit" className="btn btn-primary" style={{ marginTop: "8px", width: "100%" }}>Save</button>
+                      <div className="form-group" style={{ marginBottom: "8px" }}>
+                        <label style={{ fontSize: "0.8rem" }}>Title</label>
+                        <input type="text" required value={editTitle} onChange={(e) => setEditTitle(e.target.value)} />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: "8px" }}>
+                        <label style={{ fontSize: "0.8rem" }}>Description</label>
+                        <textarea rows="2" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "8px" }}>
+                        <input type="number" placeholder="Quantity" value={editQuantity} onChange={(e) => setEditQuantity(e.target.value)} />
+                        <input type="text" placeholder="Location" value={editDeliveryLocation} onChange={(e) => setEditDeliveryLocation(e.target.value)} />
+                      </div>
+                      <div style={{ display: "flex", gap: "8px" }}>
+                        <button type="submit" className="btn btn-primary" style={{ flex: 1, padding: "6px" }}>Save</button>
+                        <button type="button" onClick={() => setEditingRfqId(null)} className="btn btn-secondary" style={{ padding: "6px" }}>Cancel</button>
+                      </div>
                     </form>
                   ) : (
                     <div style={{ display: "flex", gap: "8px", marginTop: "12px" }}>
@@ -549,18 +567,30 @@ export default function Dashboard() {
             </div>
           )}
 
+          {/* Problem 4 Fix: Proper Supplier Bids Viewer for Buyers */}
           {selectedRfqQuotes && (
             <div className="card" style={{ marginTop: "32px", borderLeft: "4px solid var(--primary)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                <h3 style={{ fontSize: "1.15rem", fontWeight: "700" }}>Supplier Bids Received</h3>
+                <h3 style={{ fontSize: "1.15rem", fontWeight: "700" }}>Supplier Bids Received for RFQ #{selectedRfqQuotes}</h3>
                 <button onClick={() => setSelectedRfqQuotes(null)} className="btn btn-secondary" style={{ padding: "4px 10px", fontSize: "0.8rem" }}>Close</button>
               </div>
-              {loadingQuotes ? <p>Loading quotes...</p> : quotesList.length === 0 ? <p>No quotes yet.</p> : (
-                quotesList.map((q) => (
-                  <div key={q.id} style={{ padding: "12px", border: "1px solid var(--border)", marginBottom: "8px", borderRadius: "6px" }}>
-                    <strong>${q.price}</strong> - {q.supplier_email} ({q.delivery_days} days)
-                  </div>
-                ))
+              {loadingQuotes ? (
+                <p>Loading quotes...</p>
+              ) : quotesList.length === 0 ? (
+                <p style={{ color: "var(--text-muted)" }}>No bids received yet for this request.</p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                  {quotesList.map((q) => (
+                    <div key={q.id} style={{ padding: "12px", border: "1px solid var(--border)", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div>
+                        <strong>Price: ${q.price}</strong> ({q.delivery_days} days delivery)
+                        <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "2px" }}>
+                          Supplier: {q.supplier_email || q.supplier_name || "Verified Supplier"} {q.notes ? `- "${q.notes}"` : ""}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )}
